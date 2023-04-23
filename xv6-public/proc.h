@@ -36,6 +36,11 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
 struct proc {
+  int level; // 큐의 level
+  int priority; // 프로세스의 priority
+  int time; // 프로세스의 실행 시간
+  int intime; // 큐 안에서의 시간
+
   uint sz;                     // Size of process memory (bytes)
   pde_t* pgdir;                // Page table
   char *kstack;                // Bottom of kernel stack for this process

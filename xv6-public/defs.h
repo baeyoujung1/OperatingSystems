@@ -113,6 +113,7 @@ struct proc*    myproc();
 void            pinit(void);
 void            procdump(void);
 void            scheduler(void) __attribute__((noreturn));
+void priority_boosting(void);
 void            sched(void);
 void            setproc(struct proc*);
 void            sleep(void*, struct spinlock*);
@@ -162,6 +163,7 @@ void            timerinit(void);
 // trap.c
 void            idtinit(void);
 extern uint     ticks;
+extern uint gticks;
 void            tvinit(void);
 extern struct spinlock tickslock;
 
@@ -188,6 +190,13 @@ void            clearpteu(pde_t *pgdir, char *uva);
 
 //prac_syscall.c
 int myfunction(char*);
+
+//p1
+int getLevel(void);
+void setPriority(int,int);
+void yield(void);
+void schedulerLock(int);
+void schedulerUnlock(int);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

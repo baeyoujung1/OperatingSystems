@@ -89,3 +89,53 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// yield() wrapper function
+int
+sys_yield(void){
+  myproc()->level=2;
+  myproc()->priority=3;
+  myproc()->time=0;
+  myproc()->intime=gticks;
+  yield();
+  return 0;
+}
+
+// getLevel() wrapper function
+int
+sys_getLevel(void){
+  return getLevel();
+}
+
+// setPriority() wrapper function
+int
+sys_setPriority(void)
+{
+  int x,y;
+  if (argint(0,&x)<0) return -1;
+  if (argint(1,&y)<0) return -1;
+  setPriority(x,y);
+  return 0;
+}
+
+// schedulerLock wrapper function
+int
+sys_schedulerLock(void){
+  int password;
+  if(argint(0,&password)<0){
+    return -1;
+  }
+  schedulerLock(password);
+  return 0;
+}
+
+// schedulerUnlock() wrapper function
+int
+sys_schedulerUnlock(void){
+  int password;
+  if(argint(0,&password)<0){
+    return -1;
+  }
+  schedulerUnlock(password);
+  return 0;
+}

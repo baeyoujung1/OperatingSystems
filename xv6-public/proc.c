@@ -10,6 +10,9 @@
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
+
+  int locking; // lock이 걸리면 1, 그렇지 않으면 0의 값을 가진다.
+  struct proc* lock_process; // lock이 된 process를 안에 저장해준다.
 } ptable;
 
 static struct proc *initproc;
@@ -88,6 +91,11 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+
+  p->level = 0;
+  p->priority = 3;
+  p->time = 0;
+  p->intime = gticks;
 
   release(&ptable.lock);
 
@@ -322,39 +330,105 @@ wait(void)
 void
 scheduler(void)
 {
-  struct proc *p;
+  struct proc *running_p = 0;
   struct cpu *c = mycpu();
   c->proc = 0;
-  
+
   for(;;){
     // Enable interrupts on this processor.
-    sti();
+        sti();
 
-    // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+        // Loop over process table looking for process to run.
+        acquire(&ptable.lock);
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+        // lock process일 경우 먼저 실행시켜준다.
+        if (ptable.locking) {
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+            running_p = ptable.lock_process;
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+            // context switching
+            if (running_p->state == RUNNABLE) {
+        
+                c->proc = running_p;
+                switchuvm(running_p);
+                running_p->state = RUNNING;
+                //cprintf("pid : %d level : %d priority : %d time : %d global ticks : %d  \n", running_p->pid, running_p->level , running_p->priority, running_p->time, gticks);
+                swtch(&(c->scheduler), running_p->context);
+                switchkvm();
+
+                running_p->intime = gticks;
+                c->proc = 0;
+            }
+        }
+
+        // lock process가 아닐 경우
+        else {
+
+            // ptable을 살펴보며
+            struct proc *chosen_p = 0;
+            for (struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+                if (p->state != RUNNABLE) continue;
+                
+                // 실행할 프로세스를 선택한다.
+                if (!chosen_p || chosen_p->level > p->level || 
+                    (chosen_p->level == p->level && 
+                    ((chosen_p->level == 2 && (chosen_p->priority > p->priority || 
+                                                (chosen_p->priority == p->priority && chosen_p->intime > p->intime))) || 
+                      (chosen_p->level != 2 && chosen_p->intime > p->intime)))) {
+                    chosen_p = p;
+                }
+            }
+
+            // context swtiching
+            if (chosen_p) {
+                
+                c->proc = chosen_p;
+                switchuvm(chosen_p);
+                chosen_p->state = RUNNING;
+                //cprintf("pid : %d level : %d priority : %d time : %d global ticks : %d  \n", chosen_p->pid, chosen_p->level , chosen_p->priority, chosen_p->time, gticks);
+                swtch(&(c->scheduler), chosen_p->context);
+                switchkvm();
+
+                chosen_p->intime = gticks;
+                c->proc = 0;
+            }
+        }
+
+        // ZOMBIE 프로세스 상태면 unlock
+        if (ptable.locking && ptable.lock_process->state == ZOMBIE) {
+            release(&ptable.lock);
+            schedulerUnlock(2021036835);
+            acquire(&ptable.lock);
+        }
+        
+    // global ticks가 100을 넘었을 경우 priority boositng
+    if(gticks >= 100) { 
+      
+      priority_boosting();
+
+      // 이때 lock이 걸려있으면 unlock
+      if(ptable.locking) {
+        release(&ptable.lock);
+        schedulerUnlock(2021036835);
+        acquire(&ptable.lock);
+      }
+      
+      gticks = 0;
     }
-    release(&ptable.lock);
-
+      release(&ptable.lock);
   }
 }
 
+// L2 큐에서 global ticks가 100 ticks가 되었을 경우 L0 큐로 재조정하는 priority boosting 
+void priority_boosting(){
+  struct proc *p;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        p->intime = 0;
+        p->level = 0;
+        p->priority = 3;
+        p->time = 0;
+      }
+}
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -382,6 +456,7 @@ sched(void)
 }
 
 // Give up the CPU for one scheduling round.
+// 다음 프로세스에게 프로세서를 양보한다. (변경 사항 없음)
 void
 yield(void)
 {
@@ -531,4 +606,94 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+// 프로세스가 속한 큐의 레벨을 반환한다.
+int getLevel(void){
+  return myproc()->level; 
+}
+
+// 해당 pid의 프로세서의 priority를 설정한다.
+void setPriority(int pid, int priority){
+  struct proc* p;
+  acquire(&ptable.lock);
+
+  //ptable 탐색
+  for (p=ptable.proc;p<&ptable.proc[NPROC];p++){
+
+    //해당 pid와 같은 pid의 프로세스일 경우
+    if (p->pid==pid){
+
+      // priority의 값이 0~3 사이의 값이 아니면 코드를 건너뛴다.
+      if (priority<0 || priority>3){
+        continue;
+      }
+      
+      // process의 priority의 값을 입력값으로 바꿔준다.
+      else p->priority=priority;
+      break;
+    }
+  }
+  release(&ptable.lock);
+}
+
+// 해당 프로세스가 우선적으로 스케줄링 되도록 한다.
+void schedulerLock(int password){
+  acquire(&ptable.lock);
+
+  // 다른 프로세스가 lock을 하고있는 경우
+  if(ptable.locking == 1) {
+    cprintf("error!");
+    release(&ptable.lock);
+    return;
+  } 
+
+  //암호 확인 후 아니면 프로세스 강제 종료
+  else if (password!=2021036835){
+    cprintf("wrong!");
+    cprintf("pid : %d time quantum : %d queue level : %d", myproc()->pid, myproc()->time, myproc()->level);
+    release(&ptable.lock);
+    return;
+  }
+
+
+  // 암호가 맞다면 프로세스를 lock_process에 저장한다.
+  else {
+    gticks=0;
+    ptable.locking=1;
+    ptable.lock_process=myproc();
+    release(&ptable.lock);
+  }
+}
+
+// 해당 프로세스가 우선적으로 스케줄링 되던 것을 중지한다.
+void schedulerUnlock(int password){
+  acquire(&ptable.lock);
+
+  // lock 상태가 아닐 경우
+  if(ptable.locking == 0) {
+    cprintf("error!");
+    release(&ptable.lock);
+    return;
+  }
+
+  // 암호 확인 후 아니면 프로세스 강제 종료
+  else if (password!=2021036835){
+    cprintf("wrong!");
+    cprintf("pid : %d time quantum : %d queue level : %d", myproc()->pid, myproc()->time, myproc()->level);
+    release(&ptable.lock);
+    return;
+  }
+
+  // 암호가 맞다면 재설정
+  else {
+    ptable.locking=0;
+    ptable.lock_process->level=0;
+    ptable.lock_process->time=0;
+    ptable.lock_process->priority=3;
+    ptable.lock_process->intime=-1;
+    ptable.lock_process=0;
+    release(&ptable.lock);
+  }
+
 }
