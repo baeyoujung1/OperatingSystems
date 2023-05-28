@@ -41,6 +41,15 @@ struct proc {
   int time; // 프로세스의 실행 시간
   int intime; // 큐 안에서의 시간
 
+  int mlimit; // memory limit
+  int stacksize;
+
+  thread_t tid; // thread id
+  int tnext; // next thread
+  void *retval;
+  int ist; // thread?
+  thread_t ttid;
+
   uint sz;                     // Size of process memory (bytes)
   pde_t* pgdir;                // Page table
   char *kstack;                // Bottom of kernel stack for this process
@@ -56,8 +65,21 @@ struct proc {
   char name[16];               // Process name (debugging)
 };
 
+
 // Process memory is laid out contiguously, low addresses first:
 //   text
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+struct proc_info {
+  int pid;
+  char name[50];
+  int stack_pages;
+  int memory_size;
+  int memory_limit;
+};
+
+int getprocinfo(struct proc_info *procs, int max_procs);
+void print_process_info(struct proc_info *procs);
+void list_processes();

@@ -27,3 +27,10 @@
 #define SYS_yield 25
 #define SYS_schedulerLock 26
 #define SYS_schedulerUnlock 27
+
+#define SYS_exec2 28
+#define SYS_setmemorylimit 29
+#define SYS_list_processes 30
+#define SYS_thread_create 31
+#define SYS_thread_exit 32
+#define SYS_thread_join 33

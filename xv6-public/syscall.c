@@ -110,6 +110,14 @@ extern int sys_yield(void);
 extern int sys_schedulerLock(void);
 extern int sys_schedulerUnlock(void);
 
+extern int sys_exec2(void);
+extern int sys_setmemorylimit(void);
+extern int sys_list_processes(void);
+extern int sys_thread_create(void);
+extern int sys_thread_exit(void);
+extern int sys_thread_join(void);
+
+
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
 [SYS_exit]    sys_exit,
@@ -138,7 +146,15 @@ static int (*syscalls[])(void) = {
 [SYS_yield] sys_yield,
 [SYS_schedulerLock] sys_schedulerLock,
 [SYS_schedulerUnlock] sys_schedulerUnlock,
+
+[SYS_exec2] sys_exec2,
+[SYS_setmemorylimit] sys_setmemorylimit,
+[SYS_list_processes] sys_list_processes,
+[SYS_thread_create] sys_thread_create,
+[SYS_thread_exit] sys_thread_exit,
+[SYS_thread_join] sys_thread_join,
 };
+
 void
 syscall(void)
 {

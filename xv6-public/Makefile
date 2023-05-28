@@ -28,6 +28,8 @@ OBJS = \
 	vectors.o\
 	vm.o\
 	prac_syscall.o\
+	exec2.o\
+
 
 
 # Cross-compiling (e.g., on Mac OS X)
@@ -185,6 +187,14 @@ UPROGS=\
 	_zombie\
 	_prac_user_app\
 	_mlfq_test\
+	_c_exec2\
+	_pmanager\
+	_p2_test1\
+	_t_test1\
+	_thread_test\
+	_thread_exec\
+	_thread_exit\
+	_thread_kill\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -254,7 +264,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 EXTRA=\
 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
-	printf.c umalloc.c prac_user_app.c mlfq_test.c\
+	printf.c umalloc.c prac_user_app.c mlfq_test.c c_exec2.c pmanager.c p2_test1.c t_test1.c thread_test.c thread_exec.c thread_exit.c thread_kill.c\
 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
 	.gdbinit.tmpl gdbutil\
 

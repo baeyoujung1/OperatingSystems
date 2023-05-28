@@ -68,6 +68,22 @@ myproc(void) {
   return p;
 }
 
+static struct proc*
+getproc(int pid) 
+{
+    struct proc *p;
+    
+    acquire(&ptable.lock);
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if (p->pid == pid) {
+        release(&ptable.lock);
+        return p;
+        }
+    }
+    release(&ptable.lock);
+    return 0;
+}
+
 //PAGEBREAK: 32
 // Look in the process table for an UNUSED proc.
 // If found, change state to EMBRYO and initialize
@@ -97,6 +113,12 @@ found:
   p->time = 0;
   p->intime = gticks;
 
+  p->tid=-1;
+  p->ist=0;
+  p->tnext = 0;
+  p->ttid=p->tid;
+
+  // Link the thread to the process
   release(&ptable.lock);
 
   // Allocate kernel stack.
@@ -170,6 +192,15 @@ growproc(int n)
   struct proc *curproc = myproc();
 
   sz = curproc->sz;
+  
+
+  // memory limit보다 할당받으려는 memory가 더 큰 경우
+  if (curproc->mlimit != 0){
+    if (curproc->mlimit < n + sz) {
+      return -1;
+    }
+  }
+
   if(n > 0){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
@@ -177,7 +208,14 @@ growproc(int n)
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
-  curproc->sz = sz;
+
+  acquire(&ptable.lock);
+  for (struct proc* t = ptable.proc; t < &ptable.proc[NPROC]; t++) {
+    if (t->ttid == curproc->ttid)
+        t->sz = sz;
+  }
+  release(&ptable.lock);
+
   switchuvm(curproc);
   return 0;
 }
@@ -238,7 +276,6 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
-
   if(curproc == initproc)
     panic("init exiting");
 
@@ -249,7 +286,7 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
-
+  
   begin_op();
   iput(curproc->cwd);
   end_op();
@@ -330,105 +367,41 @@ wait(void)
 void
 scheduler(void)
 {
-  struct proc *running_p = 0;
+  struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-
+  
   for(;;){
     // Enable interrupts on this processor.
-        sti();
+    sti();
 
-        // Loop over process table looking for process to run.
-        acquire(&ptable.lock);
+    // Loop over process table looking for process to run.
+    acquire(&ptable.lock);
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
 
-        // lock process일 경우 먼저 실행시켜준다.
-        if (ptable.locking) {
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
 
-            running_p = ptable.lock_process;
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
 
-            // context switching
-            if (running_p->state == RUNNABLE) {
-        
-                c->proc = running_p;
-                switchuvm(running_p);
-                running_p->state = RUNNING;
-                //cprintf("pid : %d level : %d priority : %d time : %d global ticks : %d  \n", running_p->pid, running_p->level , running_p->priority, running_p->time, gticks);
-                swtch(&(c->scheduler), running_p->context);
-                switchkvm();
-
-                running_p->intime = gticks;
-                c->proc = 0;
-            }
-        }
-
-        // lock process가 아닐 경우
-        else {
-
-            // ptable을 살펴보며
-            struct proc *chosen_p = 0;
-            for (struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-                if (p->state != RUNNABLE) continue;
-                
-                // 실행할 프로세스를 선택한다.
-                if (!chosen_p || chosen_p->level > p->level || 
-                    (chosen_p->level == p->level && 
-                    ((chosen_p->level == 2 && (chosen_p->priority > p->priority || 
-                                                (chosen_p->priority == p->priority && chosen_p->intime > p->intime))) || 
-                      (chosen_p->level != 2 && chosen_p->intime > p->intime)))) {
-                    chosen_p = p;
-                }
-            }
-
-            // context swtiching
-            if (chosen_p) {
-                
-                c->proc = chosen_p;
-                switchuvm(chosen_p);
-                chosen_p->state = RUNNING;
-                //cprintf("pid : %d level : %d priority : %d time : %d global ticks : %d  \n", chosen_p->pid, chosen_p->level , chosen_p->priority, chosen_p->time, gticks);
-                swtch(&(c->scheduler), chosen_p->context);
-                switchkvm();
-
-                chosen_p->intime = gticks;
-                c->proc = 0;
-            }
-        }
-
-        // ZOMBIE 프로세스 상태면 unlock
-        if (ptable.locking && ptable.lock_process->state == ZOMBIE) {
-            release(&ptable.lock);
-            schedulerUnlock(2021036835);
-            acquire(&ptable.lock);
-        }
-        
-    // global ticks가 100을 넘었을 경우 priority boositng
-    if(gticks >= 100) { 
-      
-      priority_boosting();
-
-      // 이때 lock이 걸려있으면 unlock
-      if(ptable.locking) {
-        release(&ptable.lock);
-        schedulerUnlock(2021036835);
-        acquire(&ptable.lock);
-      }
-      
-      gticks = 0;
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
     }
-      release(&ptable.lock);
+    release(&ptable.lock);
+
   }
 }
 
-// L2 큐에서 global ticks가 100 ticks가 되었을 경우 L0 큐로 재조정하는 priority boosting 
-void priority_boosting(){
-  struct proc *p;
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-        p->intime = 0;
-        p->level = 0;
-        p->priority = 3;
-        p->time = 0;
-      }
-}
+
+
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -559,10 +532,14 @@ kill(int pid)
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
-      p->killed = 1;
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
+      for (struct proc *t = ptable.proc; t < &ptable.proc[NPROC]; t++) {
+        if (t->ttid == p->ttid) {
+            t->killed = 1;
+        }
+      }
       release(&ptable.lock);
       return 0;
     }
@@ -697,3 +674,242 @@ void schedulerUnlock(int password){
   }
 
 }
+
+int setmemorylimit(int pid, int limit) {
+    
+    struct proc *p = getproc(pid);
+
+    // limit이 0인 경우
+    if (limit == 0) {
+        p->mlimit = 0;
+        return 0;
+    }
+
+    // pid가 존재하지 않는 경우
+    if (pid < 0 || pid >= NPROC)
+        return -1;
+
+    // limit이 음수인 경우
+    if (limit < 0) 
+        return -1;
+    
+    // 기존 할당받은 메모리보다 limit가 작은 경우
+    if (limit < p->sz) 
+        return -1;
+    
+    // memory limit
+    p->mlimit = limit;
+
+    return 0;
+}
+
+
+int getprocinfo(struct proc_info *procs, int max_procs) {
+  struct proc *p;
+  int count = 0;
+
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC] && count < max_procs; p++) {
+    if (p->state == RUNNABLE || p->state == RUNNING || p->state == SLEEPING) {
+      procs[count].pid = p->pid;
+      safestrcpy(procs[count].name, p->name, 50);
+      procs[count].stack_pages = p->stacksize;
+      procs[count].memory_size = p->sz;
+      procs[count].memory_limit = p->mlimit;
+      count++;
+    }
+  }
+  release(&ptable.lock);
+
+  return count;
+
+}
+
+void print_process_info(struct proc_info* info) {
+  cprintf("Name: %s\n", info->name);
+  cprintf("PID: %d\n", info->pid);
+  cprintf("Stack Pages: %d\n", info->stack_pages);
+  cprintf("Memory Size: %d\n", info->memory_size);
+  cprintf("Memory Limit: %d\n", info->memory_limit);
+  cprintf("----------------------\n");
+}
+
+void list_processes() {
+  struct proc_info proc_infos[50];
+  int num_procs = getprocinfo(proc_infos, 50);
+
+  for (int i = 0; i < num_procs; i++) {
+    print_process_info(&proc_infos[i]);
+  }
+}
+
+int
+thread_create(thread_t *thread, void *(*start_routine)(void *), void *arg)
+{
+  int i;
+  struct proc *np;
+  struct proc *curproc = myproc();
+  uint sp, ustack[3 + MAXARG + 1];
+
+  // Allocate process.
+  if ((np = allocproc()) == 0) {
+    return -1;
+  }
+
+  // Copy process state from proc.
+  /*if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+    kfree(np->kstack);
+    np->kstack = 0;
+    np->state = UNUSED;
+    return -1;
+  }
+  */
+  
+  curproc->sz = PGROUNDUP(curproc->sz);
+  if ((curproc->sz = allocuvm(curproc->pgdir, curproc->sz, curproc->sz + 2 * PGSIZE)) == 0)
+    return -1;
+
+  clearpteu(curproc->pgdir, (char *)(curproc->sz - 2 * PGSIZE));
+  sp = curproc->sz;
+
+  //
+  np->tid = curproc->tnext++;
+
+  np->ist=1;
+  np->pid = curproc->pid;
+  np->pgdir = curproc->pgdir;
+  np->sz = curproc->sz;
+  np->parent = curproc;
+  *np->tf = *curproc->tf;
+ 
+
+  ustack[0] = 0xffffffff;  // Fake return PC
+  ustack[1] = (uint)arg;  
+
+  sp -= 8; 
+  // Copy arguments onto the user stack.
+  if (copyout(np->pgdir, sp , ustack, 8) < 0) {
+    return -1;
+  }
+
+  // Clear %eax so that fork returns 0 in the child.
+  np->tf->eax = 0;
+  np->tf->esp = sp; 
+  np->tf->eip = (uint)start_routine;
+
+  if (curproc->ist == 0) {
+    // curproc is normal process
+    np->ttid = curproc->pid;
+  } else {
+    // curproc is lwp
+    np->ttid = curproc->ttid;
+  }
+
+  //
+  for(i = 0; i < NOFILE; i++)
+    if(curproc->ofile[i])
+      np->ofile[i] = filedup(curproc->ofile[i]);
+  np->cwd = idup(curproc->cwd);
+
+  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+  switchuvm(curproc);
+  *thread = np->tid;
+
+  acquire(&ptable.lock);
+
+  np->state = RUNNABLE;
+
+  release(&ptable.lock);
+
+  return 0;
+}
+
+void
+thread_exit(void *retval)
+{
+  struct proc *curproc = myproc();
+  struct proc *p;
+  int fd;
+
+  if(curproc == initproc)
+    panic("init exiting");
+
+  // Close all open files.
+  for(fd = 0; fd < NOFILE; fd++){
+    if(curproc->ofile[fd]){
+      fileclose(curproc->ofile[fd]);
+      curproc->ofile[fd] = 0;
+    }
+  }
+
+  begin_op();
+  iput(curproc->cwd);
+  end_op();
+  curproc->cwd = 0;
+
+  acquire(&ptable.lock);
+
+  // Parent might be sleeping in wait().
+  wakeup1(curproc->parent);
+
+  // Pass abandoned children to init.
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->parent == curproc){
+      p->parent = initproc;
+      if(p->state == ZOMBIE)
+        wakeup1(initproc);
+    }
+  }
+
+  // Jump into the scheduler, never to return.
+  curproc->state = ZOMBIE;
+  curproc->retval = retval;
+  sched();
+  panic("zombie exit");
+}
+
+int
+thread_join(thread_t thread,void **retval)
+{
+  struct proc *p;
+  int havekids;
+  struct proc *curproc = myproc();
+  
+  acquire(&ptable.lock);
+  for(;;){
+    // Scan through table looking for thread.
+    havekids = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->parent != curproc)
+        continue;
+      havekids = 1;
+      if(p->state == ZOMBIE && p->tid == thread){
+        // Found one.
+        *retval = p->retval;
+        kfree(p->kstack);
+        p->kstack = 0;
+        //freevm(p->pgdir);
+        p->pid = 0;
+        p->tid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->ist=0;
+        p->ttid=0;
+        p->state = UNUSED;
+        release(&ptable.lock);
+        return 0;
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || curproc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+    
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+  }
+}
+
