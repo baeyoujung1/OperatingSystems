@@ -34,3 +34,7 @@
 #define SYS_thread_create 31
 #define SYS_thread_exit 32
 #define SYS_thread_join 33
+
+#define SYS_symlink 34
+#define SYS_symget 35
+#define SYS_sync 36

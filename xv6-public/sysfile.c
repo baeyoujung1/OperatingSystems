@@ -248,10 +248,11 @@ create(char *path, short type, short major, short minor)
     return 0;
   ilock(dp);
 
-  if((ip = dirlookup(dp, name, 0)) != 0){
+  if ((ip = dirlookup(dp, name, 0)) != 0)
+  {
     iunlockput(dp);
     ilock(ip);
-    if(type == T_FILE && ip->type == T_FILE)
+    if (type == T_FILE && ip->type == T_FILE)
       return ip;
     iunlockput(ip);
     return 0;
@@ -281,7 +282,7 @@ create(char *path, short type, short major, short minor)
 
   return ip;
 }
-
+//sfd
 int
 sys_open(void)
 {
@@ -312,6 +313,19 @@ sys_open(void)
       end_op();
       return -1;
     }
+  }
+
+  if (ip->type == T_SYM){
+
+    struct inode *sip;
+
+    iunlock(ip);
+    if ((sip=namei((char *)ip->addrs))==0) {
+      ilock(sip);
+      return -1;
+    }
+    ilock(sip);
+    ip=sip;
   }
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
@@ -368,20 +382,21 @@ sys_mknod(void)
   return 0;
 }
 
-int
-sys_chdir(void)
+int sys_chdir(void)
 {
   char *path;
   struct inode *ip;
   struct proc *curproc = myproc();
-  
+
   begin_op();
-  if(argstr(0, &path) < 0 || (ip = namei(path)) == 0){
+  if (argstr(0, &path) < 0 || (ip = namei(path)) == 0)
+  {
     end_op();
     return -1;
   }
   ilock(ip);
-  if(ip->type != T_DIR){
+  if (ip->type != T_DIR)
+  {
     iunlockput(ip);
     end_op();
     return -1;
@@ -441,4 +456,74 @@ sys_pipe(void)
   fd[0] = fd0;
   fd[1] = fd1;
   return 0;
+}
+
+int symlink(char* old, char* new){
+
+  struct file *f;
+  struct inode *ip;
+
+  begin_op();
+  if ((ip=create(new, T_SYM, 0, 0)) == 0)
+  {
+    end_op();
+    return -1;
+  }
+
+
+  end_op();
+
+  f=filealloc();
+  f->ip = ip;
+
+  safestrcpy((char *)ip->addrs, old, 50);
+  iunlock(ip);
+
+  return 0;
+}
+
+int 
+sys_symlink(void)
+{
+  char *new, *old;
+
+  if (argstr(0, &old) < 0 || argstr(1, &new) < 0)
+    return -1;
+
+  return symlink(old, new);
+}
+
+int symget(char *path, char *buf, uint bufsize)
+{
+  struct inode *ip; 
+
+  if ((ip = namei(path)) == 0)
+    return -1;
+  ilock(ip);
+
+  if (ip->type == T_SYM)
+  {
+    safestrcpy(buf, (char *)ip->addrs, bufsize);
+    iunlock(ip);
+    return 0;
+  }
+  iunlock(ip);
+  return -1;
+}
+
+int sys_symget(void)
+{
+  char *path;
+  char *buf;
+  int bufsize;
+  if (argstr(0, &path) < 0 || argstr(1, &buf) < 0 || argint(2, &bufsize))
+    return -1;
+  else
+    return symget(path, buf, bufsize);
+}
+
+int
+sys_sync(void)
+{
+  return sync();
 }

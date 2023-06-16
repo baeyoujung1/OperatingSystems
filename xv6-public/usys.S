@@ -42,3 +42,7 @@ SYSCALL(list_processes)
 SYSCALL(thread_create)
 SYSCALL(thread_exit)
 SYSCALL(thread_join)
+
+SYSCALL(symlink)
+SYSCALL(symget)
+SYSCALL(sync)

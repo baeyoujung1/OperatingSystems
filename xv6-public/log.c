@@ -151,7 +151,7 @@ end_op(void)
   log.outstanding -= 1;
   if(log.committing)
     panic("log.committing");
-  if(log.outstanding == 0){
+  if(log.outstanding == 0 && log.lh.n + MAXOPBLOCKS > LOGSIZE){
     do_commit = 1;
     log.committing = 1;
   } else {
@@ -163,9 +163,8 @@ end_op(void)
   release(&log.lock);
 
   if(do_commit){
-    // call commit w/o holding locks, since not allowed
-    // to sleep with locks.
-    commit();
+
+    sync();
     acquire(&log.lock);
     log.committing = 0;
     wakeup(&log);
@@ -230,5 +229,15 @@ log_write(struct buf *b)
     log.lh.n++;
   b->flags |= B_DIRTY; // prevent eviction
   release(&log.lock);
+}
+
+int
+sync(void)
+{
+  if (log.lh.n > 0){
+    commit();
+    return log.lh.n;
+  }
+  return -1;
 }
 

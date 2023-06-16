@@ -195,6 +195,8 @@ UPROGS=\
 	_thread_exec\
 	_thread_exit\
 	_thread_kill\
+	_testf\
+	_testc\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -265,7 +267,7 @@ EXTRA=\
 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
 	printf.c umalloc.c prac_user_app.c mlfq_test.c c_exec2.c pmanager.c p2_test1.c t_test1.c thread_test.c thread_exec.c thread_exit.c thread_kill.c\
-	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
+	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list testf testc\
 	.gdbinit.tmpl gdbutil\
 
 dist:

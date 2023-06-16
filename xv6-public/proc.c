@@ -108,17 +108,6 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
 
-  p->level = 0;
-  p->priority = 3;
-  p->time = 0;
-  p->intime = gticks;
-
-  p->tid=-1;
-  p->ist=0;
-  p->tnext = 0;
-  p->ttid=p->tid;
-
-  // Link the thread to the process
   release(&ptable.lock);
 
   // Allocate kernel stack.
@@ -144,6 +133,7 @@ found:
 
   return p;
 }
+
 
 //PAGEBREAK: 32
 // Set up first user process.
@@ -192,15 +182,6 @@ growproc(int n)
   struct proc *curproc = myproc();
 
   sz = curproc->sz;
-  
-
-  // memory limit보다 할당받으려는 memory가 더 큰 경우
-  if (curproc->mlimit != 0){
-    if (curproc->mlimit < n + sz) {
-      return -1;
-    }
-  }
-
   if(n > 0){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
@@ -208,17 +189,11 @@ growproc(int n)
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
-
-  acquire(&ptable.lock);
-  for (struct proc* t = ptable.proc; t < &ptable.proc[NPROC]; t++) {
-    if (t->ttid == curproc->ttid)
-        t->sz = sz;
-  }
-  release(&ptable.lock);
-
+  curproc->sz = sz;
   switchuvm(curproc);
   return 0;
 }
+
 
 // Create a new process copying p as the parent.
 // Sets up stack to return as if from system call.
@@ -267,6 +242,7 @@ fork(void)
   return pid;
 }
 
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
@@ -276,6 +252,7 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
+
   if(curproc == initproc)
     panic("init exiting");
 
@@ -286,7 +263,7 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
-  
+
   begin_op();
   iput(curproc->cwd);
   end_op();
@@ -311,6 +288,7 @@ exit(void)
   sched();
   panic("zombie exit");
 }
+
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
@@ -532,14 +510,10 @@ kill(int pid)
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
+      p->killed = 1;
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
-      for (struct proc *t = ptable.proc; t < &ptable.proc[NPROC]; t++) {
-        if (t->ttid == p->ttid) {
-            t->killed = 1;
-        }
-      }
       release(&ptable.lock);
       return 0;
     }
@@ -547,6 +521,7 @@ kill(int pid)
   release(&ptable.lock);
   return -1;
 }
+
 
 //PAGEBREAK: 36
 // Print a process listing to console.  For debugging.

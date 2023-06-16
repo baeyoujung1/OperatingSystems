@@ -117,6 +117,9 @@ extern int sys_thread_create(void);
 extern int sys_thread_exit(void);
 extern int sys_thread_join(void);
 
+extern int sys_symlink(void);
+extern int sys_symget(void);
+extern int sys_sync(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -153,6 +156,10 @@ static int (*syscalls[])(void) = {
 [SYS_thread_create] sys_thread_create,
 [SYS_thread_exit] sys_thread_exit,
 [SYS_thread_join] sys_thread_join,
+
+[SYS_symlink] sys_symlink,
+[SYS_symget] sys_symget,
+[SYS_sync] sys_sync,
 };
 
 void

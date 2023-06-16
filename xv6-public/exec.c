@@ -18,14 +18,29 @@ exec(char *path, char **argv)
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
   struct proc *curproc = myproc();
+  char pathadd[200];
 
   begin_op();
 
-  if((ip = namei(path)) == 0){
-    end_op();
-    cprintf("exec: fail\n");
-    return -1;
+  if (symget(path, pathadd, 200) == 0)
+  {
+    if ((ip = namei(pathadd)) == 0)
+    {
+      end_op();
+      cprintf("exec: fail\n");
+      return -1;
+    }
   }
+  else
+  {
+    if ((ip = namei(path)) == 0)
+    {
+      end_op();
+      cprintf("exec: fail\n");
+      return -1;
+    }
+  }
+
   ilock(ip);
   pgdir = 0;
 
@@ -99,12 +114,6 @@ exec(char *path, char **argv)
   curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
-
-  //
-  curproc->stacksize=1;
-
-  curproc->ttid = curproc->pid;
-
   switchuvm(curproc);
   freevm(oldpgdir);
   return 0;

@@ -206,5 +206,11 @@ void yield(void);
 void schedulerLock(int);
 void schedulerUnlock(int);
 
+//p3
+int symlink(char*, char*);
+int symget(char*, char*, uint);
+int sync(void);
+int get_log_num(void);
+
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
