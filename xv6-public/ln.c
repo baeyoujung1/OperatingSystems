@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
   }
   else
   {
-    printf(2,"%d", argc);
+    //printf(2,"%d", argc);
     printf(2, "Usage: ln old new\n");
     printf(2, "or\n");
     printf(2, "Usage for symbolic link: ln -s old new\n");
