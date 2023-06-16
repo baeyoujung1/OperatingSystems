@@ -210,7 +210,6 @@ void schedulerUnlock(int);
 int symlink(char*, char*);
 int symget(char*, char*, uint);
 int sync(void);
-int get_log_num(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
